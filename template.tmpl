@@ -2,15 +2,18 @@
 
 {{range .Schemas}}
 ## Схема: {{.Name}}
+{{if .SchemaComment}}
+{{.SchemaComment}}
+{{end -}}
 {{range .Sections}}
 {{if .Items -}}
-{{if ne .Name "Прочее"}}### {{.Name}}
+{{if .Name}}### {{.Name}}
 
 {{end -}}
 {{range .Items}}
 #### {{.ObjectType}} `{{.SchemaName}}.{{.ObjectName}}`
 {{if .Comment}}
-{{.Comment}}
+{{print .Comment}}
 {{end}}
 ```sql
 {{if eq .ObjectType "function" -}}

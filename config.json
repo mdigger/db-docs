@@ -5,7 +5,11 @@
     "footer": "---\n*Документация поддерживается в актуальном состоянии автоматически.*",
     "default_section": "Прочее",
     "default_section_description": "Объекты базы данных, не вошедшие в явные классификационные категории.",
-    "include_trigger_functions": false,
+    "include_trigger_functions": true,
+    "include_enums": true,
+    "include_domains": true,
+    "include_constraints": true,
+    "include_indexes": true,
     "schemas": [
         {
             "name": "api",

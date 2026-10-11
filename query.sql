@@ -1,5 +1,26 @@
 -- выборка метаданных схемы базы данных для генерации документации
 with raw_metadata as (
+    -- сбор информации о комментариях к схемам базы данных
+    select 
+        n.nspname::text as schema_name,
+        'schema'::text as object_type,
+        n.nspname::text as object_name,
+        ''::text as arguments_sql,
+        ''::text as result_type_sql,
+        ''::text as columns_sql,
+        ''::text as indexes_sql,
+        ''::text as triggers_sql,
+        ''::text as constraints_sql,
+        ''::text as policies_sql,
+        coalesce(obj_description(n.oid, 'pg_namespace'), ''::text) as comment,
+        0 as sort_order
+    from pg_catalog.pg_namespace n
+    where n.nspname = any($1)
+      and obj_description(n.oid, 'pg_namespace') is not null
+      and obj_description(n.oid, 'pg_namespace') <> ''
+
+    union all
+
     -- сбор информации о функциях и процедурах в схемах
     select 
         n.nspname::text as schema_name,
@@ -87,6 +108,10 @@ with raw_metadata as (
     where n.nspname = any($1)
       and (t.typrelid = 0 or (select c.relkind from pg_catalog.pg_class c where c.oid = t.typrelid) = 'c')
       and t.typtype in ('e', 'd')
+      and (
+          (t.typtype = 'e' and $3::boolean) or 
+          (t.typtype = 'd' and $4::boolean)
+      )
 
     union all
 
@@ -168,9 +193,9 @@ with raw_metadata as (
                 coalesce(cols.columns_sql, '') || 
                 E'\n' || ')'
         end::text as columns_sql,
-        coalesce(idxs.indexes_sql, ''::text) as indexes_sql,
+        case when $5::boolean then coalesce(idxs.indexes_sql, ''::text) else ''::text end as indexes_sql,
         coalesce(trig.triggers_sql, ''::text) as triggers_sql,
-        coalesce(constr.constraints_sql, ''::text) as constraints_sql,
+        case when $6::boolean then coalesce(constr.constraints_sql, ''::text) else ''::text end as constraints_sql,
         coalesce(pol.policies_sql, ''::text) as policies_sql,
         coalesce(obj_description(c.oid, 'pg_class'), ''::text) as comment,
         3 as sort_order

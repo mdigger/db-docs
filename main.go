@@ -40,6 +40,10 @@ type Config struct {
 	DefaultSection          string         `json:"default_section"`
 	DefaultSectionDesc      string         `json:"default_section_description"`
 	IncludeTriggerFunctions bool           `json:"include_trigger_functions"`
+	IncludeEnums            bool           `json:"include_enums"`
+	IncludeDomains          bool           `json:"include_domains"`
+	IncludeConstraints      bool           `json:"include_constraints"`
+	IncludeIndexes          bool           `json:"include_indexes"`
 	Schemas                 []SchemaConfig `json:"schemas"`
 }
 
@@ -64,8 +68,10 @@ type SectionData struct {
 }
 
 type SchemaData struct {
-	Name     string
-	Sections []SectionData
+	Name          string
+	Comment       string
+	Sections      []SectionData
+	SchemaComment string
 }
 
 type TemplateData struct {
@@ -87,8 +93,8 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func fetchMetadata(ctx context.Context, conn *pgx.Conn, schemaNames []string, includeTriggers bool) ([]DbObject, error) {
-	rows, err := conn.Query(ctx, embeddedQuery, schemaNames, includeTriggers)
+func fetchMetadata(ctx context.Context, conn *pgx.Conn, schemaNames []string, cfg *Config) ([]DbObject, error) {
+	rows, err := conn.Query(ctx, embeddedQuery, schemaNames, cfg.IncludeTriggerFunctions, cfg.IncludeEnums, cfg.IncludeDomains, cfg.IncludeIndexes, cfg.IncludeConstraints)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +134,15 @@ func buildTemplateData(cfg *Config, objects []DbObject) TemplateData {
 
 	for _, schemaCfg := range cfg.Schemas {
 		var schemaObjects []DbObject
+		var schemaComment string
+
 		for _, obj := range objects {
 			if obj.SchemaName == schemaCfg.Name {
-				schemaObjects = append(schemaObjects, obj)
+				if obj.ObjectType == "schema" {
+					schemaComment = obj.Comment
+				} else {
+					schemaObjects = append(schemaObjects, obj)
+				}
 			}
 		}
 
@@ -183,26 +195,36 @@ func buildTemplateData(cfg *Config, objects []DbObject) TemplateData {
 					})
 				}
 			}
-		}
 
-		var leftovers []DbObject
-		for _, obj := range schemaObjects {
-			if !assigned[obj.ObjectName] {
-				leftovers = append(leftovers, obj)
+			var leftovers []DbObject
+			for _, obj := range schemaObjects {
+				if !assigned[obj.ObjectName] {
+					leftovers = append(leftovers, obj)
+				}
+			}
+			if len(leftovers) > 0 {
+				schemaSections = append(schemaSections, SectionData{
+					Name:        defaultSec,
+					Description: cfg.DefaultSectionDesc,
+					Items:       leftovers,
+				})
+			}
+		} else {
+			// Если разделы для схемы не заданы в конфиге, выводим все объекты единым блоком без заголовка раздела
+			if len(schemaObjects) > 0 {
+				schemaSections = append(schemaSections, SectionData{
+					Name:        "",
+					Description: "",
+					Items:       schemaObjects,
+				})
 			}
 		}
-		if len(leftovers) > 0 {
-			schemaSections = append(schemaSections, SectionData{
-				Name:        defaultSec,
-				Description: cfg.DefaultSectionDesc,
-				Items:       leftovers,
-			})
-		}
 
-		if len(schemaSections) > 0 {
+		if len(schemaObjects) > 0 || schemaComment != "" {
 			templateSchemas = append(templateSchemas, SchemaData{
-				Name:     schemaCfg.Name,
-				Sections: schemaSections,
+				Name:          schemaCfg.Name,
+				SchemaComment: schemaComment,
+				Sections:      schemaSections,
 			})
 		}
 	}
@@ -277,8 +299,9 @@ func main() {
 		schemaNames = append(schemaNames, s.Name)
 	}
 
-	objects, err := fetchMetadata(ctx, conn, schemaNames, cfg.IncludeTriggerFunctions)
+	objects, err := fetchMetadata(ctx, conn, schemaNames, cfg)
 	if err != nil {
+		slog.Error("ошибка получения метаданных", "err", err)
 		LogPgError(err)
 		os.Exit(1)
 	}
