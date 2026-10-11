@@ -1,0 +1,48 @@
+{{if .Header}}{{.Header}}
+
+{{end}}{{range .Schemas}}# Схема: `{{.Name}}`
+
+{{$numSections := len .Sections}}{{range .Sections}}{{if .Items}}{{if gt $numSections 1}}## {{.Name}}
+
+{{if .Description}}{{.Description}}
+{{end}}
+{{end}}{{range .Items}}###
+{{- if eq .ObjectType "view"}} Представление `{{.SchemaName}}.{{.ObjectName}}`
+{{- else if eq .ObjectType "table"}} Таблица `{{.SchemaName}}.{{.ObjectName}}`
+{{- else if eq .ObjectType "unlogged table"}} Нежурналируемая таблица `{{.SchemaName}}.{{.ObjectName}}`
+{{- else if eq .ObjectType "hypertable"}} Гипертаблица `{{.SchemaName}}.{{.ObjectName}}`
+{{- else if eq .ObjectType "procedure"}} Процедура `{{.SchemaName}}.{{.ObjectName}}`
+{{- else}} Функция `{{.SchemaName}}.{{.ObjectName}}`{{end}}
+
+```sql
+{{if eq .ObjectType "view"}}view {{.SchemaName}}.{{.ObjectName}} as (
+{{.ColumnsSql}}
+)
+{{else if eq .ObjectType "unlogged table"}}unlogged table {{.SchemaName}}.{{.ObjectName}} {{.ColumnsSql}}
+{{else if eq .ObjectType "hypertable"}}hypertable {{.SchemaName}}.{{.ObjectName}} {{.ColumnsSql}}
+{{else if eq .ObjectType "table"}}table {{.SchemaName}}.{{.ObjectName}} {{.ColumnsSql}}
+{{else if .ArgumentsSql}}function {{.SchemaName}}.{{.ObjectName}} (
+{{.ArgumentsSql}}
+)
+returns {{.ResultTypeSql}}
+{{else}}function {{.SchemaName}}.{{.ObjectName}} ()
+returns {{.ResultTypeSql}}
+{{end}}```
+{{if .Comment}}{{.Comment}}
+{{end}}{{if .IndexesSql}}
+#### Индексы
+
+```sql
+{{.IndexesSql}}
+```
+{{end}}{{if .TriggersSql}}
+#### Триггеры
+
+```sql
+{{.TriggersSql}}
+```
+{{end}}
+{{end}}{{end}}{{end}}{{end}}{{if .Footer}}{{.Footer}} 
+
+*Сгенерировано: {{.GeneratedAt}}*
+{{end}}

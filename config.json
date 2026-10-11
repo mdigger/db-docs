@@ -1,0 +1,43 @@
+{
+    "connection_string": "postgres://localhost:5432/freeswitch?sslmode=disable",
+    "output_file": "API.md",
+    "template_file": "template.tmpl",
+    "header": "# DB API Documentation\n\nАвтоматически сгенерированная спецификация схемы базы данных.",
+    "footer": "---\n*Документация поддерживается в актуальном состоянии автоматически.*",
+    "default_section": "Системные объекты",
+    "default_section_description": "Объекты базы данных, не вошедшие в явные классификационные категории.",
+    "include_trigger_functions": false,
+    "schemas": [
+        {
+            "name": "api",
+            "sections": [
+                {
+                    "name": "Регистрация операторов",
+                    "description": "Функции и представления, управляющие статусами и регистрацией операторов.",
+                    "prefixes": ["operator_"],
+                    "exact": ["v_extensions"]
+                },
+                {
+                    "name": "Звонки операторов",
+                    "description": "Интерфейсы для работы с историей и текущими вызовами.",
+                    "prefixes": ["operator_call_"]
+                },
+                {
+                    "name": "Прослушка",
+                    "description": "Функции работы с суфлированием звонков",
+                    "prefixes": ["supervisor_"],
+                    "exact": ["operator_get_sos"]
+                },
+                {
+                    "name": "Очереди",
+                    "contains": ["queue_"]
+                },
+                {
+                    "name": "Кампании обзвона",
+                    "prefixes": ["v_outbound_"],
+                    "exact": ["get_current_weekday"]
+                }
+            ]
+        }
+    ]
+}
