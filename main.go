@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log/slog"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 //go:embed query.sql
@@ -42,15 +44,17 @@ type Config struct {
 }
 
 type DbObject struct {
-	SchemaName    string `json:"schema_name"`
-	ObjectType    string `json:"object_type"`
-	ObjectName    string `json:"object_name"`
-	ArgumentsSql  string `json:"arguments_sql"`
-	ResultTypeSql string `json:"result_type_sql"`
-	ColumnsSql    string `json:"columns_sql"`
-	IndexesSql    string `json:"indexes_sql"`
-	TriggersSql   string `json:"triggers_sql"`
-	Comment       string `json:"comment"`
+	SchemaName     string `json:"schema_name"`
+	ObjectType     string `json:"object_type"`
+	ObjectName     string `json:"object_name"`
+	ArgumentsSql   string `json:"arguments_sql"`
+	ResultTypeSql  string `json:"result_type_sql"`
+	ColumnsSql     string `json:"columns_sql"`
+	IndexesSql     string `json:"indexes_sql"`
+	TriggersSql    string `json:"triggers_sql"`
+	ConstraintsSql string `json:"constraints_sql"`
+	PoliciesSql    string `json:"policies_sql"`
+	Comment        string `json:"comment"`
 }
 
 type SectionData struct {
@@ -102,23 +106,11 @@ func fetchMetadata(ctx context.Context, conn *pgx.Conn, schemaNames []string, in
 			&obj.ColumnsSql,
 			&obj.IndexesSql,
 			&obj.TriggersSql,
+			&obj.ConstraintsSql,
+			&obj.PoliciesSql,
 			&obj.Comment,
 		); err != nil {
 			return nil, err
-		}
-
-		if obj.ArgumentsSql != "" {
-			parts := strings.Split(obj.ArgumentsSql, ", ")
-			for i, p := range parts {
-				parts[i] = "    " + strings.TrimSpace(p)
-			}
-			obj.ArgumentsSql = strings.Join(parts, ",\n")
-		}
-
-		if obj.ColumnsSql != "" {
-			if obj.ObjectType == "view" {
-				obj.ColumnsSql = "    " + obj.ColumnsSql
-			}
 		}
 
 		objects = append(objects, obj)
@@ -234,7 +226,7 @@ func renderMarkdown(outputFile string, cfg *Config, data TemplateData) error {
 	}
 
 	if outputFile == "" {
-		outputFile = "DB.md"
+		outputFile = "API.md"
 	}
 
 	file, err := os.Create(outputFile)
@@ -287,7 +279,7 @@ func main() {
 
 	objects, err := fetchMetadata(ctx, conn, schemaNames, cfg.IncludeTriggerFunctions)
 	if err != nil {
-		slog.Error("ошибка получения метаданных", "err", err)
+		LogPgError(err)
 		os.Exit(1)
 	}
 
@@ -313,4 +305,33 @@ func main() {
 	}
 
 	slog.Info("документация успешно сгенерирована", "file", *outputFile)
+}
+
+// LogPgError детально разбирает и логирует ошибку PostgreSQL
+func LogPgError(err error) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		slog.Error(
+			"ошибка получения метаданных",
+			slog.String("severity", pgErr.Severity),
+			slog.String("code", pgErr.Code), // SQLSTATE
+			slog.String("message", pgErr.Message),
+			slog.String("detail", pgErr.Detail),
+			slog.String("hint", pgErr.Hint),
+			slog.Int("position", int(pgErr.Position)),
+			slog.Int("internal_position", int(pgErr.InternalPosition)),
+			slog.String("internal_query", pgErr.InternalQuery),
+			slog.String("where", pgErr.Where),
+			slog.String("schema", pgErr.SchemaName),
+			slog.String("table", pgErr.TableName),
+			slog.String("column", pgErr.ColumnName),
+			slog.String("data_type", pgErr.DataTypeName),
+			slog.String("constraint", pgErr.ConstraintName),
+			slog.String("file", pgErr.File),
+			slog.Int("line", int(pgErr.Line)),
+			slog.String("routine", pgErr.Routine),
+		)
+	} else {
+		slog.Error("ошибка получения метаданных", slog.Any("err", err))
+	}
 }
