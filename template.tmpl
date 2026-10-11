@@ -6,13 +6,7 @@
 
 {{if .Description}}{{.Description}}
 {{end}}
-{{end}}{{range .Items}}###
-{{- if eq .ObjectType "view"}} Представление `{{.SchemaName}}.{{.ObjectName}}`
-{{- else if eq .ObjectType "table"}} Таблица `{{.SchemaName}}.{{.ObjectName}}`
-{{- else if eq .ObjectType "unlogged table"}} Нежурналируемая таблица `{{.SchemaName}}.{{.ObjectName}}`
-{{- else if eq .ObjectType "hypertable"}} Гипертаблица `{{.SchemaName}}.{{.ObjectName}}`
-{{- else if eq .ObjectType "procedure"}} Процедура `{{.SchemaName}}.{{.ObjectName}}`
-{{- else}} Функция `{{.SchemaName}}.{{.ObjectName}}`{{end}}
+{{end}}{{range .Items}}### {{if eq .ObjectType "view"}}Представление `{{.SchemaName}}.{{.ObjectName}}`{{else if eq .ObjectType "table"}}Таблица `{{.SchemaName}}.{{.ObjectName}}`{{else if eq .ObjectType "unlogged table"}}Нежурналируемая таблица `{{.SchemaName}}.{{.ObjectName}}`{{else if eq .ObjectType "hypertable"}}Гипертаблица `{{.SchemaName}}.{{.ObjectName}}`{{else if eq .ObjectType "procedure"}}Процедура `{{.SchemaName}}.{{.ObjectName}}`{{else}}Функция `{{.SchemaName}}.{{.ObjectName}}`{{end}}
 
 ```sql
 {{if eq .ObjectType "view"}}view {{.SchemaName}}.{{.ObjectName}} as (
@@ -42,7 +36,5 @@ returns {{.ResultTypeSql}}
 {{.TriggersSql}}
 ```
 {{end}}
-{{end}}{{end}}{{end}}{{end}}{{if .Footer}}{{.Footer}} 
-
-*Сгенерировано: {{.GeneratedAt}}*
+{{end}}{{end}}{{end}}{{end}}{{if .Footer}}{{.Footer}} *(сгенерировано: {{.GeneratedAt}})*
 {{end}}

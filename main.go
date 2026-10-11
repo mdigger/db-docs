@@ -32,7 +32,6 @@ type SchemaConfig struct {
 
 type Config struct {
 	ConnectionString        string         `json:"connection_string"`
-	OutputFile              string         `json:"output_file"`
 	TemplateFile            string         `json:"template_file"`
 	Header                  string         `json:"header"`
 	Footer                  string         `json:"footer"`
@@ -117,7 +116,9 @@ func fetchMetadata(ctx context.Context, conn *pgx.Conn, schemaNames []string, in
 		}
 
 		if obj.ColumnsSql != "" {
-			obj.ColumnsSql = "    " + obj.ColumnsSql
+			if obj.ObjectType == "view" {
+				obj.ColumnsSql = "    " + obj.ColumnsSql
+			}
 		}
 
 		objects = append(objects, obj)
@@ -221,7 +222,7 @@ func buildTemplateData(cfg *Config, objects []DbObject) TemplateData {
 	}
 }
 
-func renderMarkdown(cfg *Config, data TemplateData) error {
+func renderMarkdown(outputFile string, cfg *Config, data TemplateData) error {
 	tmplContent, err := os.ReadFile(cfg.TemplateFile)
 	if err != nil {
 		return err
@@ -232,12 +233,11 @@ func renderMarkdown(cfg *Config, data TemplateData) error {
 		return err
 	}
 
-	outFile := cfg.OutputFile
-	if outFile == "" {
-		outFile = "API.md"
+	if outputFile == "" {
+		outputFile = "DB.md"
 	}
 
-	file, err := os.Create(outFile)
+	file, err := os.Create(outputFile)
 	if err != nil {
 		return err
 	}
@@ -248,6 +248,8 @@ func renderMarkdown(cfg *Config, data TemplateData) error {
 
 func main() {
 	configPath := flag.String("config", "config.json", "путь к файлу конфигурации")
+	outputFile := flag.String("output", "API.md", "путь к результирующему файлу документации")
+	dumpFile := flag.String("dump", "", "путь для сохранения разобранных метаданных в формате JSON")
 	flag.Parse()
 
 	if _, err := os.Stat(*configPath); os.IsNotExist(err) {
@@ -257,7 +259,7 @@ func main() {
 
 	slog.Info("загрузка конфигурации", slog.String("path", *configPath))
 
-	cfg, err := loadConfig("config.json")
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		slog.Error("ошибка конфигурации", "err", err)
 		os.Exit(1)
@@ -265,7 +267,8 @@ func main() {
 
 	connStr := cfg.ConnectionString
 	if connStr == "" {
-		connStr = "postgres://localhost:5432/freeswitch?sslmode=disable&test=true"
+		slog.Error("строка подключения к базе данных не указана в конфигурации")
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
@@ -288,13 +291,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *dumpFile != "" {
+		jsonData, err := json.MarshalIndent(objects, "", "    ")
+		if err != nil {
+			slog.Error("ошибка сериализации метаданных в JSON", "err", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(*dumpFile, jsonData, 0o644); err != nil {
+			slog.Error("ошибка записи файла дампа", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("дамп метаданных успешно сохранен", slog.String("file", *dumpFile))
+	}
+
 	data := buildTemplateData(cfg, objects)
 	data.GeneratedAt = time.Now().Format("02.01.2006 15:04:05")
 
-	if err := renderMarkdown(cfg, data); err != nil {
+	if err := renderMarkdown(*outputFile, cfg, data); err != nil {
 		slog.Error("ошибка рендеринга документации", "err", err)
 		os.Exit(1)
 	}
 
-	slog.Info("документация успешно сгенерирована", "file", cfg.OutputFile)
+	slog.Info("документация успешно сгенерирована", "file", *outputFile)
 }

@@ -1,3 +1,4 @@
+-- выборка метаданных схемы базы данных для генерации документации
 select 
     n.nspname::text as schema_name,
     case p.prokind
@@ -40,6 +41,7 @@ where n.nspname = any($1)
 
 union all
 
+-- сбор информации о представлениях базы данных
 select 
     n.nspname::text as schema_name,
     'view'::text as object_type,
@@ -53,6 +55,7 @@ select
 from pg_catalog.pg_class c
 join pg_catalog.pg_namespace n on n.oid = c.relnamespace
 left join lateral (
+    -- агрегация списка колонок представления с приведением типов к нижнему регистру
     select string_agg(
         format('%I %s', a.attname, lower(format_type(a.atttypid, a.atttypmod))) ||
         case 
@@ -73,6 +76,7 @@ where n.nspname = any($1)
 
 union all
 
+-- сбор информации о таблицах, нежурналируемых таблицах и гипертаблицах timescaledb
 select 
     n.nspname::text as schema_name,
     case 
@@ -83,6 +87,7 @@ select
     c.relname::text as object_name,
     ''::text as arguments_sql,
     ''::text as result_type_sql,
+    -- формирование блока колонок таблицы без переноса строки перед открывающей скобкой
     case 
         when opts.options_block is not null and opts.options_block <> '' then
             '(' || chr(10) || coalesce(cols.columns_sql, '') || chr(10) || ')' || chr(10) ||
@@ -98,6 +103,7 @@ select
 from pg_catalog.pg_class c
 join pg_catalog.pg_namespace n on n.oid = c.relnamespace
 left join lateral (
+    -- извлечение колонок таблиц с отступами и комментариями полей
     select string_agg(
         '    ' || format('%I %s', a.attname, lower(format_type(a.atttypid, a.atttypmod))) ||
         case 
@@ -114,6 +120,7 @@ left join lateral (
       and not a.attisdropped
 ) cols on true
 left join lateral (
+    -- извлечение определений индексов с форматированием параметров
     select string_agg(
         case 
             when obj_description(i.indexrelid, 'pg_class') is not null and obj_description(i.indexrelid, 'pg_class') <> '' 
@@ -137,6 +144,7 @@ left join lateral (
     where i.indrelid = c.oid
 ) idxs on true
 left join lateral (
+    -- извлечение триггерных определений таблицы без использования внутренних переменных
     select string_agg(
         case 
             when obj_description(t.oid, 'pg_trigger') is not null and obj_description(t.oid, 'pg_trigger') <> '' 
@@ -169,6 +177,7 @@ left join timescaledb_information.hypertables h_check on h_check.hypertable_sche
 left join timescaledb_information.dimensions d on d.hypertable_schema = n.nspname and d.hypertable_name = c.relname and lower(d.dimension_type) = 'time'
 left join timescaledb_information.jobs j on j.hypertable_schema = n.nspname and j.hypertable_name = c.relname and j.proc_name = 'policy_retention'
 left join (
+    -- сбор параметров компрессии для гипертаблиц timescaledb
     select cs.hypertable_schema, cs.hypertable_name, 
            string_agg(cs.attname, ', ' order by cs.segmentby_column_index) as seg_cols,
            string_agg(cs.attname, ', ' order by cs.orderby_column_index) as ord_cols
@@ -176,6 +185,7 @@ left join (
     group by cs.hypertable_schema, cs.hypertable_name
 ) comp on comp.hypertable_schema = n.nspname and comp.hypertable_name = c.relname
 left join lateral (
+    -- формирование блока опций хранения таблицы и параметров timescaledb
     select string_agg('    ' || opt.line, ',' || chr(10) order by opt.sort_order) as options_block
     from (
         select 1 as sort_order, unnest(c.reloptions) as line
