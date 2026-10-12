@@ -17,7 +17,7 @@
 {{end}}
 ```sql
 {{if eq .ObjectType "function" -}}
-function {{.ObjectName}}({{.ArgumentsSql}})
+function {{.SchemaName}}.{{.ObjectName}}({{.ArgumentsSql}})
 returns {{.ResultTypeSql}}
 {{else if eq .ObjectType "table" -}}
 table {{.SchemaName}}.{{.ObjectName}} {{.ColumnsSql}}
@@ -29,6 +29,10 @@ hypertable {{.SchemaName}}.{{.ObjectName}} {{.ColumnsSql}}
 view {{.SchemaName}}.{{.ObjectName}} as {{.ColumnsSql}}
 {{else if eq .ObjectType "enum" -}}
 type {{.SchemaName}}.{{.ObjectName}} as enum {{.ColumnsSql}}
+{{else if eq .ObjectType "materialized view" -}}
+materialized view {{.SchemaName}}.{{.ObjectName}} as {{.ColumnsSql}}
+{{else if eq .ObjectType "continuous aggregate" -}}
+continuous aggregate {{.SchemaName}}.{{.ObjectName}} as {{.ColumnsSql}}
 {{end -}}
 ```
 

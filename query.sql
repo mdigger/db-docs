@@ -169,6 +169,92 @@ with raw_metadata as (
 
     union all
 
+    -- сбор информации о материализованных представлениях и continuous aggregates
+    select 
+        n.nspname::text as schema_name,
+        case 
+            when ca_check.view_name is not null then 'continuous aggregate'
+            else 'materialized view'
+        end::text as object_type,
+        c.relname::text as object_name,
+        ''::text as arguments_sql,
+        ''::text as result_type_sql,
+        coalesce(
+            case 
+                when cols.columns_sql is not null and cols.columns_sql <> '' then
+                    '(' || E'\n' || cols.columns_sql || E'\n' || ')'
+                else ''
+            end, 
+            ''
+        )::text as columns_sql,
+        case when $5::boolean then coalesce(idxs.indexes_sql, ''::text) else ''::text end as indexes_sql,
+        ''::text as triggers_sql,
+        ''::text as constraints_sql,
+        ''::text as policies_sql,
+        coalesce(obj_description(c.oid, 'pg_class'), ''::text) as comment,
+        3 as sort_order
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    left join lateral (
+        select string_agg(
+            format('    %I %s%s', 
+                a.attname, 
+                lower(format_type(a.atttypid, a.atttypmod)),
+                case 
+                    when col_description(c.oid, a.attnum) is not null and col_description(c.oid, a.attnum) <> '' 
+                    then range_agg.comma || ' -- ' || col_description(c.oid, a.attnum)
+                    else range_agg.comma 
+                end
+            ),
+            E'\n' 
+            order by a.attnum
+        ) as columns_sql
+        from pg_catalog.pg_attribute a
+        cross join lateral (
+            select case 
+                when a.attnum < (select max(attnum) from pg_catalog.pg_attribute where attrelid = c.oid and attnum > 0 and not attisdropped) 
+                then ',' 
+                else '' 
+            end as comma
+        ) range_agg
+        where a.attrelid = c.oid 
+          and a.attnum > 0 
+          and not a.attisdropped
+    ) cols on true
+    left join lateral (
+        select string_agg(
+            case 
+                when obj_description(i.indexrelid, 'pg_class') is not null and obj_description(i.indexrelid, 'pg_class') <> '' 
+                then '-- ' || obj_description(i.indexrelid, 'pg_class') || E'\n' 
+                else '' 
+            end ||
+            regexp_replace(
+                regexp_replace(
+                    regexp_replace(
+                        regexp_replace(lower(pg_get_indexdef(i.indexrelid)), '^create\s+', '', 'i'), 
+                        '\s+using\s+', 
+                        E'\n    using ', 
+                        'i'
+                    ),
+                    '\s+on\s+', 
+                    E'\n    on ', 
+                    'i'
+                ),
+                '\s+(with|where)\s+',
+                E'\n    \\1 ',
+                'gi'
+            ),
+            E'\n' || E'\n'
+        ) as indexes_sql
+        from pg_catalog.pg_index i
+        where i.indrelid = c.oid
+    ) idxs on true
+    left join timescaledb_information.continuous_aggregates ca_check on ca_check.view_schema = n.nspname and ca_check.view_name = c.relname
+    where n.nspname = any($1)
+      and c.relkind = 'm'
+
+    union all
+
     -- сбор информации о таблицах, нежурналируемых таблицах и гипертаблицах
     select 
         n.nspname::text as schema_name,
