@@ -14,51 +14,52 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"go.yaml.in/yaml/v4"
 )
 
 //go:embed query.sql
 var embeddedQuery string
 
 type SectionRule struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Prefixes    []string `json:"prefixes"`
-	Contains    []string `json:"contains"`
-	Exact       []string `json:"exact"`
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Prefixes    []string `yaml:"prefixes"`
+	Contains    []string `yaml:"contains"`
+	Exact       []string `yaml:"exact"`
 }
 
 type SchemaConfig struct {
-	Name     string        `json:"name"`
-	Sections []SectionRule `json:"sections"`
+	Name     string        `yaml:"name"`
+	Sections []SectionRule `yaml:"sections"`
 }
 
 type Config struct {
-	ConnectionString        string         `json:"connection_string"`
-	TemplateFile            string         `json:"template_file"`
-	Header                  string         `json:"header"`
-	Footer                  string         `json:"footer"`
-	DefaultSection          string         `json:"default_section"`
-	DefaultSectionDesc      string         `json:"default_section_description"`
-	IncludeTriggerFunctions bool           `json:"include_trigger_functions"`
-	IncludeEnums            bool           `json:"include_enums"`
-	IncludeDomains          bool           `json:"include_domains"`
-	IncludeConstraints      bool           `json:"include_constraints"`
-	IncludeIndexes          bool           `json:"include_indexes"`
-	Schemas                 []SchemaConfig `json:"schemas"`
+	ConnectionString        string         `yaml:"connection_string"`
+	TemplateFile            string         `yaml:"template_file"`
+	Header                  string         `yaml:"header"`
+	Footer                  string         `yaml:"footer"`
+	DefaultSection          string         `yaml:"default_section"`
+	DefaultSectionDesc      string         `yaml:"default_section_description"`
+	IncludeTriggerFunctions bool           `yaml:"include_trigger_functions"`
+	IncludeEnums            bool           `yaml:"include_enums"`
+	IncludeDomains          bool           `yaml:"include_domains"`
+	IncludeConstraints      bool           `yaml:"include_constraints"`
+	IncludeIndexes          bool           `yaml:"include_indexes"`
+	Schemas                 []SchemaConfig `yaml:"schemas"`
 }
 
 type DbObject struct {
-	SchemaName     string `json:"schema_name"`
-	ObjectType     string `json:"object_type"`
-	ObjectName     string `json:"object_name"`
-	ArgumentsSql   string `json:"arguments_sql"`
-	ResultTypeSql  string `json:"result_type_sql"`
-	ColumnsSql     string `json:"columns_sql"`
-	IndexesSql     string `json:"indexes_sql"`
-	TriggersSql    string `json:"triggers_sql"`
-	ConstraintsSql string `json:"constraints_sql"`
-	PoliciesSql    string `json:"policies_sql"`
-	Comment        string `json:"comment"`
+	SchemaName     string `json:"schema_name" yaml:"schema_name"`
+	ObjectType     string `json:"object_type" yaml:"object_type"`
+	ObjectName     string `json:"object_name" yaml:"object_name"`
+	ArgumentsSql   string `json:"arguments_sql" yaml:"arguments_sql"`
+	ResultTypeSql  string `json:"result_type_sql" yaml:"result_type_sql"`
+	ColumnsSql     string `json:"columns_sql" yaml:"columns_sql"`
+	IndexesSql     string `json:"indexes_sql" yaml:"indexes_sql"`
+	TriggersSql    string `json:"triggers_sql" yaml:"triggers_sql"`
+	ConstraintsSql string `json:"constraints_sql" yaml:"constraints_sql"`
+	PoliciesSql    string `json:"policies_sql" yaml:"policies_sql"`
+	Comment        string `json:"comment" yaml:"comment"`
 }
 
 type SectionData struct {
@@ -87,14 +88,23 @@ func loadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	var cfg Config
-	if err := json.Unmarshal(configFile, &cfg); err != nil {
+	if err := yaml.Unmarshal(configFile, &cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
 func fetchMetadata(ctx context.Context, conn *pgx.Conn, schemaNames []string, cfg *Config) ([]DbObject, error) {
-	rows, err := conn.Query(ctx, embeddedQuery, schemaNames, cfg.IncludeTriggerFunctions, cfg.IncludeEnums, cfg.IncludeDomains, cfg.IncludeIndexes, cfg.IncludeConstraints)
+	rows, err := conn.Query(
+		ctx,
+		embeddedQuery,
+		schemaNames,
+		cfg.IncludeTriggerFunctions,
+		cfg.IncludeEnums,
+		cfg.IncludeDomains,
+		cfg.IncludeIndexes,
+		cfg.IncludeConstraints,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +220,6 @@ func buildTemplateData(cfg *Config, objects []DbObject) TemplateData {
 				})
 			}
 		} else {
-			// Если разделы для схемы не заданы в конфиге, выводим все объекты единым блоком без заголовка раздела
 			if len(schemaObjects) > 0 {
 				schemaSections = append(schemaSections, SectionData{
 					Name:        "",
@@ -261,7 +270,7 @@ func renderMarkdown(outputFile string, cfg *Config, data TemplateData) error {
 }
 
 func main() {
-	configPath := flag.String("config", "config.json", "путь к файлу конфигурации")
+	configPath := flag.String("config", "config.yaml", "путь к файлу конфигурации")
 	outputFile := flag.String("output", "API.md", "путь к результирующему файлу документации")
 	dumpFile := flag.String("dump", "", "путь для сохранения разобранных метаданных в формате JSON")
 	flag.Parse()
@@ -330,14 +339,13 @@ func main() {
 	slog.Info("документация успешно сгенерирована", "file", *outputFile)
 }
 
-// LogPgError детально разбирает и логирует ошибку PostgreSQL
 func LogPgError(err error) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		slog.Error(
-			"ошибка получения метаданных",
+			"postgresql database error",
 			slog.String("severity", pgErr.Severity),
-			slog.String("code", pgErr.Code), // SQLSTATE
+			slog.String("code", pgErr.Code),
 			slog.String("message", pgErr.Message),
 			slog.String("detail", pgErr.Detail),
 			slog.String("hint", pgErr.Hint),
@@ -355,6 +363,6 @@ func LogPgError(err error) {
 			slog.String("routine", pgErr.Routine),
 		)
 	} else {
-		slog.Error("ошибка получения метаданных", slog.Any("err", err))
+		slog.Error("non-postgres error encountered", slog.String("err", err.Error()))
 	}
 }
